@@ -71,9 +71,9 @@ The application features a comprehensive theme system with QSS stylesheets:
 
 **Available Themes**:
 - Dark Mode (default)
-- Light Mode
-- High Contrast modes
-- Additional themed variants
+- Catppuccin Mocha
+- Dracula
+- True Black
 
 ### Performance Optimizations
 
