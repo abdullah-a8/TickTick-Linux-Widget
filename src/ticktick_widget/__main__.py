@@ -1,43 +1,51 @@
+#!/usr/bin/env python3
 """
-Main entry point for TickTick Linux Widget.
+TickTick Widget - Main Entry Point
+
+Usage:
+    python -m ticktick_widget            # Launch GUI widget
+    python -m ticktick_widget --cli       # Run CLI version (fetch and save tasks)
 """
 
 import sys
+import argparse
 from .backend.api import get_active_standard_tasks, save_tasks_to_json
 
-def main():
-    """Main function for the TickTick Widget."""
-    print("🚀 TickTick Linux Widget v0.1.0")
-    print("=" * 40)
+
+def run_cli():
+    """Run CLI version - fetch and save tasks"""
+    print("Fetching active tasks from TickTick...")
+    tasks = get_active_standard_tasks()
     
+    if save_tasks_to_json(tasks):
+        print(f"✅ Saved {len(tasks)} active standard tasks to data/allActiveTasks.json")
+    else:
+        print("❌ Failed to save tasks")
+
+
+def run_gui():
+    """Run GUI version - launch the widget"""
     try:
-        # For now, just run the backend functionality
-        print("📡 Fetching active tasks...")
-        tasks = get_active_standard_tasks()
-        
-        if tasks:
-            success = save_tasks_to_json(tasks)
-            if success:
-                print(f"✅ Successfully saved {len(tasks)} tasks to data/allActiveTasks.json")
-                print("\n📋 Task Summary:")
-                for i, task in enumerate(tasks[:5], 1):  # Show first 5 tasks
-                    title = task.get('title', 'Untitled')
-                    priority = '⭐' * task.get('priority', 0)
-                    print(f"  {i}. {title} {priority}")
-                
-                if len(tasks) > 5:
-                    print(f"  ... and {len(tasks) - 5} more tasks")
-            else:
-                print("❌ Failed to save tasks")
-                sys.exit(1)
-        else:
-            print("ℹ️  No active tasks found")
-            
-    except Exception as e:
-        print(f"❌ Error: {e}")
+        from .gui.main_widget import main
+        main()
+    except ImportError as e:
+        print(f"❌ GUI dependencies not installed: {e}")
+        print("Please install PyQt6: pip install PyQt6")
         sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="TickTick Widget")
+    parser.add_argument('--cli', action='store_true', 
+                      help='Run CLI version instead of GUI')
     
-    print("\n🎯 GUI implementation coming in Phase 1!")
+    args = parser.parse_args()
+    
+    if args.cli:
+        run_cli()
+    else:
+        run_gui()
+
 
 if __name__ == "__main__":
     main() 
