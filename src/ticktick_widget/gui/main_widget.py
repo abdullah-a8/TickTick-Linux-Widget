@@ -213,13 +213,25 @@ class TickTickWidget(QWidget):
         theme_manager.apply_theme_to_widget(self)
     
     def mousePressEvent(self, a0: QMouseEvent | None):
-        """Allow dragging the widget"""
+        """Allow dragging the widget - Wayland compatible"""
         if a0 and a0.button() == Qt.MouseButton.LeftButton:
-            self.drag_start_position = a0.globalPosition().toPoint() - self.pos()
+            # Use the modern approach that works with Wayland
+            window_handle = self.windowHandle()
+            if window_handle:
+                # startSystemMove() tells the window manager to handle dragging
+                # This works properly on Wayland, X11, and Windows
+                window_handle.startSystemMove()
+            else:
+                # Fallback: store position for manual dragging on older systems
+                self.drag_start_position = a0.globalPosition().toPoint() - self.pos()
     
     def mouseMoveEvent(self, a0: QMouseEvent | None):
-        """Handle widget dragging"""
-        if a0 and hasattr(self, 'drag_start_position') and a0.buttons() == Qt.MouseButton.LeftButton:
+        """Handle widget dragging - fallback for systems without startSystemMove support"""
+        # Only use manual dragging as fallback if startSystemMove wasn't available
+        if (a0 and hasattr(self, 'drag_start_position') and 
+            a0.buttons() == Qt.MouseButton.LeftButton and 
+            not self.windowHandle()):
+            # This is the old manual approach, only used as fallback
             self.move(a0.globalPosition().toPoint() - self.drag_start_position)
 
 
