@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                             QScrollArea, QPushButton, QLabel,
                             QFrame, QSizePolicy, QComboBox)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QPalette, QMouseEvent
+from PyQt6.QtGui import QFont, QPalette, QMouseEvent, QShowEvent
 
 from ..backend.api import get_active_standard_tasks, save_tasks_to_json
 from ..config.theme_manager import theme_manager
@@ -39,8 +39,48 @@ class TickTickWidget(QWidget):
         self.setWindowTitle("Tasks")
         self.setFixedSize(460, 680)  # 8px grid: optimized for modern card layout
         
-        # Make window stay on top and frameless for widget-like appearance
-        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
+        # Configure window for desktop widget behavior - avoid taskbar/dock
+        # Use multiple approaches for maximum Wayland/GNOME compatibility
+        
+        # Check if we're likely on GNOME/Wayland and use alternative approach
+        import os
+        desktop_env = os.getenv('XDG_CURRENT_DESKTOP', '').lower()
+        session_type = os.getenv('XDG_SESSION_TYPE', '').lower()
+        
+        # Use QT_QPA_PLATFORM environment to determine the best flags
+        force_x11 = os.getenv('QT_QPA_PLATFORM') == 'xcb'
+        
+        if ('gnome' in desktop_env and session_type == 'wayland') and not force_x11:
+            # GNOME Wayland: Use SplashScreen type which is often ignored by taskbars
+            widget_flags = (
+                Qt.WindowType.SplashScreen |  # Alternative that works better on GNOME Wayland
+                Qt.WindowType.FramelessWindowHint  # Remove window decorations
+                # Note: Removed WindowDoesNotAcceptFocus to allow keyboard shortcuts
+            )
+        else:
+            # X11 or other compositors: Use traditional approach with better behavior
+            widget_flags = (
+                Qt.WindowType.Tool |  # Prevents taskbar appearance (primary method)
+                Qt.WindowType.FramelessWindowHint  # Remove window decorations
+                # Note: Removed WindowDoesNotAcceptFocus to allow keyboard shortcuts
+            )
+        
+        self.setWindowFlags(widget_flags)
+        
+        # Additional platform-specific hints for taskbar avoidance
+        self.setAttribute(Qt.WidgetAttribute.WA_X11DoNotAcceptFocus, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, False)  # Ensure it shows but not in taskbar
+        
+        # GNOME/Wayland specific workarounds
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)  # Avoid compositor issues
+        
+        # Set window role for GNOME Shell (helps with window classification)
+        if hasattr(self, 'setWindowRole'):
+            self.setWindowRole("desktop-widget")
+        
+        # Try to set skip taskbar hint at the window level (post-show)
+        self.skip_taskbar_setup_pending = True
         
         # Main layout - 8px grid system
         layout = QVBoxLayout()
@@ -79,6 +119,9 @@ class TickTickWidget(QWidget):
         layout.addWidget(self.status_label)
         
         self.setLayout(layout)
+        
+        # Position the widget in a reasonable default location
+        self.move(100, 100)  # Start away from corner
     
     def create_modern_header(self):
         """Create a clean, simple header design"""
@@ -213,30 +256,105 @@ class TickTickWidget(QWidget):
         theme_manager.apply_theme_to_widget(self)
     
     def mousePressEvent(self, a0: QMouseEvent | None):
-        """Allow dragging the widget - Wayland compatible"""
+        """Allow dragging the widget - Cross-platform compatible"""
         if a0 and a0.button() == Qt.MouseButton.LeftButton:
-            # Use the modern approach that works with Wayland
+            # Store the starting position for manual dragging
+            self.drag_start_position = a0.globalPosition().toPoint() - self.pos()
+            self.dragging = True
+            
+            # Also try the modern approach for systems that support it
             window_handle = self.windowHandle()
-            if window_handle:
-                # startSystemMove() tells the window manager to handle dragging
-                # This works properly on Wayland, X11, and Windows
-                window_handle.startSystemMove()
-            else:
-                # Fallback: store position for manual dragging on older systems
-                self.drag_start_position = a0.globalPosition().toPoint() - self.pos()
+            if window_handle and hasattr(window_handle, 'startSystemMove'):
+                try:
+                    # This works on modern systems but may not work with Tool window type
+                    window_handle.startSystemMove()
+                    self.dragging = False  # System is handling it
+                except Exception:
+                    # Fall back to manual dragging
+                    pass
     
     def mouseMoveEvent(self, a0: QMouseEvent | None):
-        """Handle widget dragging - fallback for systems without startSystemMove support"""
-        # Only use manual dragging as fallback if startSystemMove wasn't available
-        if (a0 and hasattr(self, 'drag_start_position') and 
-            a0.buttons() == Qt.MouseButton.LeftButton and 
-            not self.windowHandle()):
-            # This is the old manual approach, only used as fallback
-            self.move(a0.globalPosition().toPoint() - self.drag_start_position)
+        """Handle widget dragging - Manual dragging implementation"""
+        if (a0 and hasattr(self, 'dragging') and self.dragging and 
+            hasattr(self, 'drag_start_position') and 
+            a0.buttons() == Qt.MouseButton.LeftButton):
+            # Manual dragging - works reliably across all platforms and window types
+            new_pos = a0.globalPosition().toPoint() - self.drag_start_position
+            self.move(new_pos)
+    
+    def mouseReleaseEvent(self, a0: QMouseEvent | None):
+        """End dragging when mouse is released"""
+        if hasattr(self, 'dragging'):
+            self.dragging = False
+    
+    def keyPressEvent(self, a0):
+        """Handle keyboard shortcuts"""
+        # Toggle always on top with Ctrl+T
+        if a0 and a0.key() == Qt.Key.Key_T and a0.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.toggle_always_on_top()
+        super().keyPressEvent(a0)
+    
+    def toggle_always_on_top(self):
+        """Toggle whether the widget stays on top of other windows"""
+        current_flags = self.windowFlags()
+        if current_flags & Qt.WindowType.WindowStaysOnTopHint:
+            # Remove always on top
+            new_flags = current_flags & ~Qt.WindowType.WindowStaysOnTopHint
+            self.setWindowFlags(new_flags)
+            self.show()  # Need to show again after changing flags
+        else:
+            # Add always on top
+            new_flags = current_flags | Qt.WindowType.WindowStaysOnTopHint
+            self.setWindowFlags(new_flags)
+            self.show()  # Need to show again after changing flags
+    
+    def showEvent(self, a0):
+        """Handle post-show setup for Wayland/GNOME compatibility"""
+        super().showEvent(a0)
+        
+        # Apply additional hints after window is realized
+        if hasattr(self, 'skip_taskbar_setup_pending') and self.skip_taskbar_setup_pending:
+            self.skip_taskbar_setup_pending = False
+            self.setup_wayland_hints()
+    
+    def setup_wayland_hints(self):
+        """Apply Wayland/GNOME specific hints for taskbar avoidance"""
+        try:
+            window_handle = self.windowHandle()
+            if window_handle:
+                # Try to set window type hint to dock/desktop for GNOME Shell
+                from PyQt6.QtGui import QWindow
+                
+                # Set additional properties that GNOME Shell might respect
+                window_handle.setProperty("_NET_WM_WINDOW_TYPE", "_NET_WM_WINDOW_TYPE_DOCK")
+                window_handle.setProperty("_NET_WM_STATE", "_NET_WM_STATE_SKIP_TASKBAR")
+                window_handle.setProperty("_NET_WM_STATE", "_NET_WM_STATE_SKIP_PAGER")
+                
+                # Alternative: try setting as a desktop widget
+                window_handle.setProperty("_KDE_NET_WM_WINDOW_TYPE_OVERRIDE", 1)
+                    
+        except Exception:
+            # Silently ignore errors in hint setting
+            pass
 
 
 def main():
     app = QApplication(sys.argv)
+    
+    # Set application metadata and process name
+    app.setApplicationName("TickTick Widget")
+    app.setApplicationDisplayName("TickTick Widget") 
+    app.setApplicationVersion("1.0")
+    app.setOrganizationName("TickTick Widget")
+    
+    # Try to set process title for better process identification
+    try:
+        import importlib
+        setproctitle = importlib.import_module('setproctitle')
+        setproctitle.setproctitle("TickTick Widget")
+    except ImportError:
+        # setproctitle not available - install with: pip install setproctitle
+        pass
     
     # Set application style
     app.setStyle('Fusion')

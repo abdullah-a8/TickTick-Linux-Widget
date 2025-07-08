@@ -4,3 +4,4 @@ loguru
 pyperclip
 python-dotenv
 PyQt6
+setproctitle
