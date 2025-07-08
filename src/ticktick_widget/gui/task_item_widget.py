@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+import zoneinfo
 
 
 class TaskItemWidget(QWidget):
@@ -179,20 +180,27 @@ class TaskItemWidget(QWidget):
             return "priorityNone"
     
     def format_due_date(self, due_date_str):
-        """Format due date with improved text"""
+        """Format due date with improved text - timezone aware"""
         try:
-            due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
-            now = datetime.now(timezone.utc)
+            # Parse UTC due date
+            due_date_utc = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
+            
+            # Get user timezone from task data (same logic as grouping)
+            user_tz = self.get_task_timezone()
+            
+            # Convert to user timezone for accurate display
+            due_date_user_tz = due_date_utc.astimezone(user_tz)
+            now_user_tz = datetime.now(user_tz)
             
             # Use same calendar day logic as grouping function
-            today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            due_date_day = due_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_start = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+            due_date_day_start = due_date_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
             
             # Calculate calendar day difference
-            day_diff = (due_date_day - today).days
+            day_diff = (due_date_day_start - today_start).days
             
             # Also calculate time difference for more detailed "today" messages
-            time_diff = due_date - now
+            time_diff = due_date_user_tz - now_user_tz
             hours = max(0, int(time_diff.total_seconds() // 3600))
             
             if day_diff < 0:
@@ -209,7 +217,28 @@ class TaskItemWidget(QWidget):
             elif day_diff <= 7:
                 return f"Due in {day_diff} days"
             else:
-                # Show actual date for far future
-                return due_date.strftime("%b %d")
-        except:
-            return due_date_str.split('T')[0]  # Fallback to date part 
+                # Show actual date for far future in user's timezone
+                return due_date_user_tz.strftime("%b %d")
+        except Exception as e:
+            return due_date_str.split('T')[0]  # Fallback to date part
+
+    def get_task_timezone(self):
+        """Get timezone for this task, with fallbacks"""
+        # Try to get timezone from task data
+        task_tz = self.task_data.get('timeZone')
+        if task_tz:
+            try:
+                return zoneinfo.ZoneInfo(task_tz)
+            except Exception:
+                pass
+        
+        # Fallback to system timezone
+        try:
+            system_tz = datetime.now().astimezone().tzinfo
+            if system_tz is not None:
+                return system_tz
+        except Exception:
+            pass
+        
+        # Ultimate fallback to UTC
+        return timezone.utc 
