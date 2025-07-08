@@ -46,16 +46,17 @@ class AutostartSetup:
         # Ensure autostart directory exists
         self.desktop_autostart_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create desktop entry content with X11 mode for better compatibility
+        # Create desktop entry content with X11 mode for better compatibility and startup delay
         desktop_content = f"""[Desktop Entry]
 Type=Application
 Name=TickTick Widget
 Comment=Desktop widget for TickTick tasks
-Exec=env QT_QPA_PLATFORM=xcb {self.widget_command}
+Exec=sh -c 'sleep 3 && env QT_QPA_PLATFORM=xcb {self.widget_command}'
 Icon=ticktick-widget
 StartupNotify=false
 NoDisplay=true
 X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3
 X-KDE-autostart-after=panel
 X-MATE-Autostart-enabled=true
 Categories=Utility;
@@ -70,7 +71,7 @@ Categories=Utility;
         desktop_path.chmod(0o755)
         
         print(f"✅ Desktop entry created: {desktop_path}")
-        print("   The widget will start automatically on login.")
+        print("   The widget will start automatically 3 seconds after login.")
         
     def setup_systemd_service(self):
         """Set up systemd user service autostart method"""
@@ -79,7 +80,7 @@ Categories=Utility;
         # Ensure systemd user directory exists
         self.systemd_user_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create systemd service content with X11 mode for better compatibility
+        # Create systemd service content with X11 mode for better compatibility and startup delay
         service_content = f"""[Unit]
 Description=TickTick Desktop Widget
 After=graphical-session.target
@@ -92,6 +93,7 @@ Environment=WAYLAND_DISPLAY=wayland-0
 Environment=QT_QPA_PLATFORM=xcb
 Environment=PYTHONPATH={self.project_root}/src
 WorkingDirectory={self.project_root}
+ExecStartPre=/bin/sleep 3
 ExecStart=python -m ticktick_widget
 Restart=on-failure
 RestartSec=5
@@ -111,7 +113,7 @@ WantedBy=default.target
         try:
             subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
             subprocess.run(["systemctl", "--user", "enable", self.service_file.replace('.service', '')], check=True)
-            print("✅ Systemd service enabled")
+            print("✅ Systemd service enabled with 3-second startup delay")
             
             # Check if linger is enabled (for persistence across logout)
             username = os.getenv("USER")

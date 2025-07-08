@@ -116,6 +116,33 @@ QT_QPA_PLATFORM=xcb python -m ticktick_widget
 - **Wayland**: Limited window management, may appear in dock depending on compositor
 - **Recommendation**: Use X11 mode (`QT_QPA_PLATFORM=xcb`) for best experience
 
+## Position Persistence
+
+The widget automatically remembers its screen position and will restore it when restarted. This works both for manual launches and autostart.
+
+**How it works:**
+- Position is saved automatically when you drag the widget to a new location
+- Position is also saved when the widget is moved by any other means
+- The position is stored in `data/config/position_config.json`
+- Default position is (100, 100) if no saved position exists
+- Position saving has a 500ms delay to avoid excessive disk writes during dragging
+
+**Configuration file example:**
+```json
+{
+  "x": 159,
+  "y": 49,
+  "version": "1.0"
+}
+```
+
+**To reset position to default:**
+You can either:
+1. Delete the config file: `rm data/config/position_config.json`
+2. Edit the file manually to set desired x,y coordinates
+
+This ensures your widget appears in the same location every time, whether started manually or through autostart.
+
 ## Platform Support
 
 | Desktop Environment | Desktop Entry | Systemd Service | Notes |

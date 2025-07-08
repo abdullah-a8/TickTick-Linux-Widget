@@ -3,18 +3,63 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
-                            QScrollArea, QPushButton, QLabel,
-                            QFrame, QSizePolicy, QComboBox)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QPushButton, QLabel, QFrame, QSizePolicy, QComboBox
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QPalette, QMouseEvent, QShowEvent
 
-from ..backend.api import get_active_standard_tasks, save_tasks_to_json
-from ..config.theme_manager import theme_manager
-from ..utils.task_grouping import group_tasks_by_time, get_group_display_info, sort_tasks_in_group
-from .task_group_widget import TaskGroupWidget
-from .task_item_widget import TaskItemWidget
+# Lazy imports for startup optimization
+_backend_api = None
+_task_grouping = None
+_task_widgets = None
 
+def _get_backend_api():
+    global _backend_api
+    if _backend_api is None:
+        from ..backend.api import get_active_standard_tasks, save_tasks_to_json
+        _backend_api = {'get_active_standard_tasks': get_active_standard_tasks, 'save_tasks_to_json': save_tasks_to_json}
+    return _backend_api
+
+def _get_task_grouping():
+    global _task_grouping
+    if _task_grouping is None:
+        from ..utils.task_grouping import group_tasks_by_time, get_group_display_info, sort_tasks_in_group
+        _task_grouping = {'group_tasks_by_time': group_tasks_by_time, 'get_group_display_info': get_group_display_info, 'sort_tasks_in_group': sort_tasks_in_group}
+    return _task_grouping
+
+def _get_task_widgets():
+    global _task_widgets
+    if _task_widgets is None:
+        from .task_group_widget import TaskGroupWidget
+        from .task_item_widget import TaskItemWidget
+        _task_widgets = {'TaskGroupWidget': TaskGroupWidget, 'TaskItemWidget': TaskItemWidget}
+    return _task_widgets
+
+# Import managers immediately as they're lightweight
+from ..config.theme_manager import theme_manager
+from ..config.position_manager import position_manager
+
+
+class StartupOptimizer(QThread):
+    """Background thread for heavy startup operations"""
+    tasks_loaded = pyqtSignal(list)
+    
+    def __init__(self):
+        super().__init__()
+        self.project_root = Path(__file__).parent.parent.parent.parent
+        
+    def run(self):
+        """Load tasks in background"""
+        try:
+            json_file = self.project_root / "data" / "allActiveTasks.json"
+            if json_file.exists():
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    tasks = json.load(f)
+                self.tasks_loaded.emit(tasks)
+            else:
+                self.tasks_loaded.emit([])
+        except Exception as e:
+            print(f"Error loading tasks in background: {e}")
+            self.tasks_loaded.emit([])
 
 
 class TickTickWidget(QWidget):
@@ -23,8 +68,15 @@ class TickTickWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.tasks = []
+        self.startup_complete = False
+        self.deferred_operations_pending = True
+        
+        # Setup UI immediately (lightweight)
         self.setup_ui()
-        self.load_tasks()
+        
+        # Defer heavy operations until after show
+        self.startup_optimizer = StartupOptimizer()
+        self.startup_optimizer.tasks_loaded.connect(self.on_tasks_loaded)
         
         # Setup auto-refresh timer (every 5 minutes)
         self.timer = QTimer()
@@ -33,7 +85,12 @@ class TickTickWidget(QWidget):
         
         # Connect to theme manager
         theme_manager.theme_changed.connect(self.on_theme_changed)
-        self.apply_theme()
+        
+        # Mark for deferred initialization
+        self.init_timer = QTimer()
+        self.init_timer.setSingleShot(True)
+        self.init_timer.timeout.connect(self.complete_startup)
+        self.init_timer.start(50)  # Short delay to allow widget to show first
     
     def setup_ui(self):
         self.setWindowTitle("Tasks")
@@ -119,9 +176,6 @@ class TickTickWidget(QWidget):
         layout.addWidget(self.status_label)
         
         self.setLayout(layout)
-        
-        # Position the widget in a reasonable default location
-        self.move(100, 100)  # Start away from corner
     
     def create_modern_header(self):
         """Create a clean, simple header design"""
@@ -166,20 +220,42 @@ class TickTickWidget(QWidget):
         header_widget.setLayout(header_layout)
         return header_widget
     
-    def load_tasks(self):
-        """Load tasks from JSON file"""
-        try:
-            project_root = Path(__file__).parent.parent.parent.parent
-            json_file = project_root / "data" / "allActiveTasks.json"
+    def complete_startup(self):
+        """Complete the deferred startup operations"""
+        if not self.deferred_operations_pending:
+            return
             
-            if json_file.exists():
-                with open(json_file, 'r', encoding='utf-8') as f:
-                    self.tasks = json.load(f)
-                self.update_task_display()
-            else:
-                self.status_label.setText("No tasks file found. Click Refresh to fetch tasks.")
-        except Exception as e:
-            self.status_label.setText(f"Error loading tasks: {str(e)}")
+        self.deferred_operations_pending = False
+        
+        # Apply theme
+        self.apply_theme()
+        
+        # Load saved position
+        saved_position = position_manager.load_position()
+        self.move(saved_position)
+        
+        # Start background task loading
+        self.startup_optimizer.start()
+        
+        # Set status
+        self.status_label.setText("Loading tasks...")
+        
+        self.startup_complete = True
+
+    def on_tasks_loaded(self, tasks):
+        """Handle tasks loaded from background thread"""
+        self.tasks = tasks
+        if self.tasks:
+            self.update_task_display()
+            self.status_label.setText(f"Loaded {len(self.tasks)} tasks")
+        else:
+            self.status_label.setText("No tasks file found. Click Refresh to fetch tasks.")
+
+    def load_tasks(self):
+        """Load tasks from JSON file - now deprecated, using background loading"""
+        # This method is kept for compatibility but now does nothing
+        # Tasks are loaded in background via complete_startup()
+        pass
     
     def refresh_tasks(self):
         """Refresh tasks from TickTick API"""
@@ -188,10 +264,10 @@ class TickTickWidget(QWidget):
         
         try:
             # Fetch new tasks
-            tasks = get_active_standard_tasks()
+            tasks = _get_backend_api()['get_active_standard_tasks']()
             
             # Save to file
-            if save_tasks_to_json(tasks):
+            if _get_backend_api()['save_tasks_to_json'](tasks):
                 self.tasks = tasks
                 self.update_task_display()
                 self.status_label.setText(f"Last updated: {datetime.now().strftime('%H:%M:%S')} - {len(tasks)} tasks")
@@ -221,7 +297,7 @@ class TickTickWidget(QWidget):
             return
         
         # Group tasks by time periods
-        grouped_tasks = group_tasks_by_time(self.tasks)
+        grouped_tasks = _get_task_grouping()['group_tasks_by_time'](self.tasks)
         
         # Define the order of groups to display
         group_order = ['overdue', 'today', 'tomorrow', 'later']
@@ -232,13 +308,13 @@ class TickTickWidget(QWidget):
             
             if tasks_in_group:  # Only show groups that have tasks
                 # Sort tasks within the group
-                sorted_tasks = sort_tasks_in_group(tasks_in_group, group_key)
+                sorted_tasks = _get_task_grouping()['sort_tasks_in_group'](tasks_in_group, group_key)
                 
                 # Get group display info
-                group_info = get_group_display_info(group_key, len(sorted_tasks))
+                group_info = _get_task_grouping()['get_group_display_info'](group_key, len(sorted_tasks))
                 
                 # Create group widget
-                group_widget = TaskGroupWidget(group_key, group_info, sorted_tasks)
+                group_widget = _get_task_widgets()['TaskGroupWidget'](group_key, group_info, sorted_tasks)
                 
                 # Insert before the stretch
                 self.tasks_layout.insertWidget(self.tasks_layout.count() - 1, group_widget)
@@ -286,6 +362,22 @@ class TickTickWidget(QWidget):
         """End dragging when mouse is released"""
         if hasattr(self, 'dragging'):
             self.dragging = False
+            # Save position after dragging
+            position_manager.save_position(self.pos())
+    
+    def moveEvent(self, a0):
+        """Handle widget being moved and save the new position"""
+        super().moveEvent(a0)
+        # Save position whenever widget is moved (by any means)
+        # Add a small delay to avoid excessive saves during dragging
+        if hasattr(self, '_move_timer'):
+            self._move_timer.stop()
+        
+        from PyQt6.QtCore import QTimer
+        self._move_timer = QTimer()
+        self._move_timer.setSingleShot(True)
+        self._move_timer.timeout.connect(lambda: position_manager.save_position(self.pos()))
+        self._move_timer.start(500)  # Save 500ms after last move
     
     def keyPressEvent(self, a0):
         """Handle keyboard shortcuts"""
