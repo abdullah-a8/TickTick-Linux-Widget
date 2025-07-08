@@ -235,13 +235,12 @@ QPushButton[objectName="secondaryButton"]:disabled {{
 QComboBox {{
     background-color: {colors['bg_secondary']};
     border: 1px solid {colors['border']};
-    padding: 8px 16px;
     border-radius: 8px;
     font-size: 11pt;
     font-weight: 400;
     color: {colors['text_primary']};
     height: 32px;
-    padding-right: 32px;
+    padding-left: 8px;
 }}
 
 QComboBox:focus {{
@@ -250,10 +249,9 @@ QComboBox:focus {{
 
 QComboBox::drop-down {{
     border: none;
-    width: 32px;
-    subcontrol-origin: padding;
+    width: 24px;
+    subcontrol-origin: border;
     subcontrol-position: top right;
-    border-left: 1px solid {colors['border']};
 }}
 
 QComboBox::down-arrow {{
@@ -268,7 +266,7 @@ QComboBox QAbstractItemView {{
     selection-background-color: {colors['accent']};
     color: {colors['text_primary']};
     outline: none;
-    padding: 8px;
+    padding: 4px;
 }}
 
 /* Tool Button Styling */
