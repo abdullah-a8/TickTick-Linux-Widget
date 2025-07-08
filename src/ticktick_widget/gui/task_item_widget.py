@@ -184,24 +184,30 @@ class TaskItemWidget(QWidget):
             due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
             now = datetime.now(timezone.utc)
             
-            # Calculate time difference
-            diff = due_date - now
-            days = diff.days
-            hours = diff.seconds // 3600
+            # Use same calendar day logic as grouping function
+            today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            due_date_day = due_date.replace(hour=0, minute=0, second=0, microsecond=0)
             
-            if days < 0:
-                return f"Overdue by {abs(days)} day{'s' if abs(days) != 1 else ''}"
-            elif days == 0:
+            # Calculate calendar day difference
+            day_diff = (due_date_day - today).days
+            
+            # Also calculate time difference for more detailed "today" messages
+            time_diff = due_date - now
+            hours = max(0, int(time_diff.total_seconds() // 3600))
+            
+            if day_diff < 0:
+                return f"Overdue by {abs(day_diff)} day{'s' if abs(day_diff) != 1 else ''}"
+            elif day_diff == 0:
                 if hours < 1:
                     return "Due very soon"
                 elif hours < 12:
                     return f"Due today ({hours}h left)"
                 else:
                     return "Due today"
-            elif days == 1:
+            elif day_diff == 1:
                 return "Due tomorrow"
-            elif days <= 7:
-                return f"Due in {days} days"
+            elif day_diff <= 7:
+                return f"Due in {day_diff} days"
             else:
                 # Show actual date for far future
                 return due_date.strftime("%b %d")
