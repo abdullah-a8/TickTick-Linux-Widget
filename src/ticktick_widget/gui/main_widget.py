@@ -5,11 +5,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                             QListWidget, QListWidgetItem, QPushButton, QLabel,
-                            QFrame, QSizePolicy)
+                            QFrame, QSizePolicy, QComboBox)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QPalette, QMouseEvent
 
 from ..backend.api import get_active_standard_tasks, save_tasks_to_json
+from ..config.theme_manager import theme_manager
 
 
 class TaskItemWidget(QWidget):
@@ -22,83 +23,78 @@ class TaskItemWidget(QWidget):
     
     def setup_ui(self):
         layout = QVBoxLayout()
-        layout.setSpacing(4)
-        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(16)  # 8px grid: 16px spacing
+        layout.setContentsMargins(24, 16, 24, 16)  # 8px grid: 24px horizontal, 16px vertical
         
         # Main task info layout
         main_layout = QHBoxLayout()
+        main_layout.setSpacing(16)  # 8px grid: 16px spacing
         
         # Task title
         title = self.task_data.get('title', 'Untitled Task')
         title_label = QLabel(title)
-        title_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        title_label.setFont(QFont("Inter", 13, QFont.Weight.DemiBold))
+        title_label.setObjectName("primaryText")
         title_label.setWordWrap(True)
+        title_label.setStyleSheet("line-height: 1.4;")
         
-        # Priority indicator
+        # Priority indicator - 8px grid aligned
         priority = self.task_data.get('priority', 0)
         priority_text = self.get_priority_text(priority)
         priority_label = QLabel(priority_text)
-        priority_label.setFont(QFont("Arial", 8))
-        priority_label.setStyleSheet(self.get_priority_style(priority))
-        priority_label.setFixedWidth(60)
+        priority_label.setFont(QFont("Inter", 7, QFont.Weight.Bold))
+        priority_label.setObjectName(self.get_priority_style(priority))
+        priority_label.setFixedSize(32, 16)  # 8px grid: 32px x 16px
         priority_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        main_layout.addWidget(title_label)
-        main_layout.addWidget(priority_label)
+        main_layout.addWidget(title_label, 1)  # Give title more space
+        main_layout.addWidget(priority_label, 0)  # Priority takes minimal space
         
         layout.addLayout(main_layout)
         
-        # Due date if available
+        # Add some spacing before metadata - 8px grid
+        layout.addSpacing(8)
+        
+        # Due date if available - more prominent but still secondary
         if 'dueDate' in self.task_data:
             due_date = self.format_due_date(self.task_data['dueDate'])
-            due_label = QLabel(f"Due: {due_date}")
-            due_label.setFont(QFont("Arial", 8))
-            due_label.setStyleSheet("color: #666666;")
+            due_label = QLabel(f"📅 {due_date}")
+            due_label.setFont(QFont("Inter", 10, QFont.Weight.Medium))
+            due_label.setObjectName("subtitleText")
             layout.addWidget(due_label)
         
-        # Content if available
+        # Content if available - clear but subdued
         if 'content' in self.task_data and self.task_data['content']:
+            layout.addSpacing(8)  # 8px grid spacing
             content_label = QLabel(self.task_data['content'])
-            content_label.setFont(QFont("Arial", 8))
-            content_label.setStyleSheet("color: #888888;")
+            content_label.setFont(QFont("Inter", 10))
+            content_label.setObjectName("mutedText")
             content_label.setWordWrap(True)
             layout.addWidget(content_label)
         
         self.setLayout(layout)
-        
-        # Add border and background
-        self.setStyleSheet("""
-            TaskItemWidget {
-                background-color: #f8f9fa;
-                border: 1px solid #e9ecef;
-                border-radius: 6px;
-                margin: 2px;
-            }
-            TaskItemWidget:hover {
-                background-color: #e9ecef;
-            }
-        """)
     
     def get_priority_text(self, priority):
         priority_map = {
-            5: "High",
-            4: "High", 
-            3: "Med",
-            2: "Low",
-            1: "Low",
-            0: "None"
+            5: "H",
+            4: "H", 
+            3: "M",
+            2: "L",
+            1: "L",
+            0: "—"
         }
-        return priority_map.get(priority, "None")
+        return priority_map.get(priority, "—")
     
     def get_priority_style(self, priority):
+        # Set object name for theme styling instead of inline styles
         if priority >= 4:
-            return "background-color: #dc3545; color: white; border-radius: 3px; padding: 2px;"
+            return "priorityHigh"
         elif priority == 3:
-            return "background-color: #fd7e14; color: white; border-radius: 3px; padding: 2px;"
+            return "priorityMedium"
         elif priority >= 1:
-            return "background-color: #28a745; color: white; border-radius: 3px; padding: 2px;"
+            return "priorityLow"
         else:
-            return "background-color: #6c757d; color: white; border-radius: 3px; padding: 2px;"
+            return "priorityNone"
     
     def format_due_date(self, due_date_str):
         try:
@@ -135,36 +131,52 @@ class TickTickWidget(QWidget):
         self.timer = QTimer()
         self.timer.timeout.connect(self.refresh_tasks)
         self.timer.start(300000)  # 5 minutes in milliseconds
+        
+        # Connect to theme manager
+        theme_manager.theme_changed.connect(self.on_theme_changed)
+        self.apply_theme()
     
     def setup_ui(self):
         self.setWindowTitle("TickTick Tasks")
-        self.setFixedSize(400, 600)
+        self.setFixedSize(440, 640)  # 8px grid: increased size to accommodate better spacing
         
         # Make window stay on top and frameless for widget-like appearance
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
         
-        # Main layout
+        # Main layout - 8px grid system
         layout = QVBoxLayout()
-        layout.setSpacing(10)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(24)  # 8px grid: 24px spacing between major sections
+        layout.setContentsMargins(24, 24, 24, 24)  # 8px grid: 24px all around
         
         # Header
         header_layout = QHBoxLayout()
+        header_layout.setSpacing(16)  # 8px grid: 16px between header elements
         
         title_label = QLabel("TickTick Tasks")
-        title_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        title_label.setFont(QFont("Inter", 18, QFont.Weight.Bold))
+        title_label.setObjectName("sectionTitle")
+        title_label.setContentsMargins(0, 0, 0, 0)  # Remove extra margins for clean alignment
         
         refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self.refresh_tasks)
-        refresh_btn.setMaximumWidth(80)
+        refresh_btn.setObjectName("secondaryButton")
+        refresh_btn.setFixedSize(88, 32)  # 8px grid: 88px width, 32px height
+        
+        # Theme selector dropdown
+        theme_combo = QComboBox()
+        theme_combo.addItems(theme_manager.get_available_themes())
+        theme_combo.setCurrentText(theme_manager.get_current_theme_name())
+        theme_combo.currentTextChanged.connect(self.change_theme)
+        theme_combo.setFixedSize(128, 32)  # 8px grid: 128px width, 32px height
         
         close_btn = QPushButton("×")
         close_btn.clicked.connect(self.close)
-        close_btn.setMaximumWidth(30)
-        close_btn.setStyleSheet("QPushButton { color: red; font-weight: bold; }")
+        close_btn.setFixedSize(32, 32)  # 8px grid: 32px square
+        close_btn.setObjectName("secondaryButton")
         
         header_layout.addWidget(title_label)
         header_layout.addStretch()
+        header_layout.addWidget(theme_combo)
         header_layout.addWidget(refresh_btn)
         header_layout.addWidget(close_btn)
         
@@ -172,36 +184,16 @@ class TickTickWidget(QWidget):
         
         # Task list
         self.task_list = QListWidget()
-        self.task_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #dee2e6;
-                border-radius: 6px;
-                background-color: white;
-            }
-            QListWidget::item {
-                border: none;
-                padding: 0px;
-                margin: 4px;
-            }
-        """)
         layout.addWidget(self.task_list)
         
-        # Status label
+        # Status label - 8px grid spacing
         self.status_label = QLabel("Loading tasks...")
-        self.status_label.setFont(QFont("Arial", 9))
-        self.status_label.setStyleSheet("color: #666666;")
+        self.status_label.setFont(QFont("Inter", 10))
+        self.status_label.setObjectName("mutedText")
+        self.status_label.setContentsMargins(0, 16, 0, 8)  # 8px grid: top 16px, bottom 8px
         layout.addWidget(self.status_label)
         
         self.setLayout(layout)
-        
-        # Widget styling
-        self.setStyleSheet("""
-            TickTickWidget {
-                background-color: #ffffff;
-                border: 2px solid #dee2e6;
-                border-radius: 10px;
-            }
-        """)
     
     def load_tasks(self):
         """Load tasks from JSON file"""
@@ -263,6 +255,18 @@ class TickTickWidget(QWidget):
             self.task_list.addItem(item)
             self.task_list.setItemWidget(item, task_widget)
     
+    def change_theme(self, theme_name):
+        """Handle theme change from dropdown"""
+        theme_manager.set_theme(theme_name)
+    
+    def on_theme_changed(self, theme_name):
+        """Handle theme change signal"""
+        self.apply_theme()
+    
+    def apply_theme(self):
+        """Apply the current theme to this widget"""
+        theme_manager.apply_theme_to_widget(self)
+    
     def mousePressEvent(self, a0: QMouseEvent | None):
         """Allow dragging the widget"""
         if a0 and a0.button() == Qt.MouseButton.LeftButton:
@@ -279,6 +283,9 @@ def main():
     
     # Set application style
     app.setStyle('Fusion')
+    
+    # Apply theme to application
+    theme_manager.apply_theme_to_app(app)
     
     widget = TickTickWidget()
     widget.show()
