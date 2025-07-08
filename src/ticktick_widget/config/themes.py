@@ -46,50 +46,54 @@ QLabel[objectName="mainTitle"] {{
     letter-spacing: -0.5px;
 }}
 
-/* Section Title (H1 Secondary) */
+/* Typography Hierarchy - Modern Design System */
+
+/* Main Widget Title (H1) */
 QLabel[objectName="sectionTitle"] {{
     color: {colors['text_primary']};
-    font-size: 18pt;
+    font-size: 20pt;
     font-weight: 700;
     font-family: 'Inter', 'SF Pro Display', 'Segoe UI Variable', 'Roboto', sans-serif;
-    line-height: 1.3;
-    letter-spacing: -0.3px;
+    line-height: 1.2;
+    letter-spacing: -0.4px;
 }}
 
-/* Primary Text (H2) - Task Titles */
-QLabel[objectName="primaryText"] {{
+/* Task Group Headers (H2) */
+QLabel[objectName="sectionSubtitle"] {{
     color: {colors['text_primary']};
     font-size: 13pt;
+    font-weight: 600;
+    font-family: 'Inter', 'SF Pro Display', 'Segoe UI Variable', 'Roboto', sans-serif;
+    line-height: 1.3;
+    letter-spacing: -0.1px;
+}}
+
+/* Task Titles (H3) - Now handled by taskTitle */
+QLabel[objectName="primaryText"] {{
+    color: {colors['text_primary']};
+    font-size: 14pt;
     font-weight: 600;
     font-family: 'Inter', 'SF Pro Display', 'Segoe UI Variable', 'Roboto', sans-serif;
     line-height: 1.4;
     letter-spacing: -0.1px;
 }}
 
-/* Section Subtitle (H3) */
-QLabel[objectName="sectionSubtitle"] {{
-    color: {colors['text_primary']};
-    font-size: 12pt;
-    font-weight: 500;
-    font-family: 'Inter', 'SF Pro Display', 'Segoe UI Variable', 'Roboto', sans-serif;
-    line-height: 1.4;
-}}
-
-/* Subtitle Text - Due dates, secondary info */
+/* Secondary Text - Group counts, etc */
 QLabel[objectName="subtitleText"] {{
     color: {colors['text_muted']};
-    font-size: 10pt;
+    font-size: 11pt;
     font-weight: 500;
     line-height: 1.3;
-    letter-spacing: 0.1px;
+    letter-spacing: 0.05px;
 }}
 
-/* Muted Text - Content, descriptions */
+/* Muted Text - General descriptive text */
 QLabel[objectName="mutedText"] {{
     color: {colors['text_muted']};
-    font-size: 10pt;
+    font-size: 11pt;
     font-weight: 400;
     line-height: 1.4;
+    opacity: 0.9;
 }}
 
 /* Icon Labels */
@@ -364,56 +368,126 @@ TickTickWidget {{
     border-radius: 12px;
 }}
 
-/* Task item widget styling - 8px grid system */
-TaskItemWidget {{
+/* Modern Task Card Styling - 8px grid system */
+QWidget[objectName="taskCard"] {{
     background-color: {colors['bg_secondary']};
     border: 1px solid {colors['border']};
     border-radius: 12px;
-    margin: 8px 0px;
+    margin: 4px 0px;
     padding: 0px;
 }}
 
-TaskItemWidget:hover {{
+QWidget[objectName="taskCard"]:hover {{
     background-color: {colors['hover']};
     border-color: {colors['accent']};
     border-width: 1px;
 }}
 
-/* Task priority indicators - Modern minimal badges */
+/* Task Typography Hierarchy */
+QLabel[objectName="taskTitle"] {{
+    color: {colors['text_primary']};
+    font-size: 14pt;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.2px;
+}}
+
+QLabel[objectName="taskDueDate"] {{
+    color: {colors['text_muted']};
+    font-size: 11pt;
+    font-weight: 500;
+}}
+
+QLabel[objectName="taskOverdue"] {{
+    color: #ef4444;
+    font-size: 11pt;
+    font-weight: 600;
+}}
+
+QLabel[objectName="taskDueToday"] {{
+    color: {colors['accent']};
+    font-size: 11pt;
+    font-weight: 600;
+}}
+
+QLabel[objectName="taskContent"] {{
+    color: {colors['text_muted']};
+    font-size: 11pt;
+    font-weight: 400;
+    line-height: 1.4;
+    opacity: 0.8;
+}}
+
+/* Modern Priority Badges */
 QLabel[objectName="priorityHigh"] {{
     background-color: #ef4444;
     color: white;
-    border-radius: 9px;
-    padding: 1px 4px;
+    border-radius: 10px;
+    padding: 2px 6px;
     font-weight: 700;
-    font-size: 7pt;
+    font-size: 9pt;
+    min-width: 20px;
 }}
 
 QLabel[objectName="priorityMedium"] {{
     background-color: #f59e0b;
     color: white;
-    border-radius: 9px;
-    padding: 1px 4px;
+    border-radius: 10px;
+    padding: 2px 6px;
     font-weight: 700;
-    font-size: 7pt;
+    font-size: 9pt;
+    min-width: 20px;
 }}
 
 QLabel[objectName="priorityLow"] {{
     background-color: #10b981;
     color: white;
-    border-radius: 9px;
-    padding: 1px 4px;
+    border-radius: 10px;
+    padding: 2px 6px;
     font-weight: 700;
-    font-size: 7pt;
+    font-size: 9pt;
+    min-width: 20px;
 }}
 
 QLabel[objectName="priorityNone"] {{
     background-color: {colors['text_muted']};
     color: {colors['bg_primary']};
-    border-radius: 9px;
-    padding: 1px 4px;
+    border-radius: 10px;
+    padding: 2px 6px;
     font-weight: 500;
-    font-size: 7pt;
+    font-size: 9pt;
+    min-width: 20px;
+    opacity: 0.7;
+}}
+
+/* Task Group Widget styling */
+TaskGroupWidget {{
+    background-color: transparent;
+    border: none;
+}}
+
+/* Task Group Header styling */
+QWidget[objectName="taskGroupHeader"] {{
+    background-color: {colors['bg_secondary']};
+    border: 1px solid {colors['border']};
+    border-radius: 8px;
+    margin: 0px;
+    padding: 0px;
+}}
+
+QWidget[objectName="taskGroupHeader"]:hover {{
+    background-color: {colors['hover']};
+    border-color: {colors['accent']};
+}}
+
+/* Scroll Area styling */
+QScrollArea {{
+    background-color: transparent;
+    border: none;
+}}
+
+QScrollArea > QWidget > QWidget {{
+    background-color: transparent;
 }}
 """
 
