@@ -119,6 +119,7 @@ class TickTickWidget(QWidget):
         self.completion_worker = None  # Initialize task completion worker
         self.pending_completion_task = None  # Store task data for potential rollback
         self.startup_refresh_timer = None  # Initialize startup refresh timer
+        self.position_locked = position_manager.load_lock_state()  # Load lock state
         
         # Setup UI immediately (lightweight)
         self.setup_ui()
@@ -428,7 +429,7 @@ class TickTickWidget(QWidget):
     
     def mousePressEvent(self, a0: QMouseEvent | None):
         """Allow dragging the widget - Cross-platform compatible"""
-        if a0 and a0.button() == Qt.MouseButton.LeftButton:
+        if a0 and a0.button() == Qt.MouseButton.LeftButton and not self.position_locked:
             # Store the starting position for manual dragging
             self.drag_start_position = a0.globalPosition().toPoint() - self.pos()
             self.dragging = True
@@ -448,7 +449,7 @@ class TickTickWidget(QWidget):
         """Handle widget dragging - Manual dragging implementation"""
         if (a0 and hasattr(self, 'dragging') and self.dragging and 
             hasattr(self, 'drag_start_position') and 
-            a0.buttons() == Qt.MouseButton.LeftButton):
+            a0.buttons() == Qt.MouseButton.LeftButton and not self.position_locked):
             # Manual dragging - works reliably across all platforms and window types
             new_pos = a0.globalPosition().toPoint() - self.drag_start_position
             self.move(new_pos)
@@ -457,28 +458,33 @@ class TickTickWidget(QWidget):
         """End dragging when mouse is released"""
         if hasattr(self, 'dragging'):
             self.dragging = False
-            # Save position after dragging
-            position_manager.save_position(self.pos())
+            # Save position after dragging (only if not locked)
+            if not self.position_locked:
+                position_manager.save_position(self.pos())
     
     def moveEvent(self, a0):
         """Handle widget being moved and save the new position"""
         super().moveEvent(a0)
-        # Save position whenever widget is moved (by any means)
-        # Add a small delay to avoid excessive saves during dragging
-        if hasattr(self, '_move_timer'):
-            self._move_timer.stop()
-        
-        from PyQt6.QtCore import QTimer
-        self._move_timer = QTimer()
-        self._move_timer.setSingleShot(True)
-        self._move_timer.timeout.connect(lambda: position_manager.save_position(self.pos()))
-        self._move_timer.start(500)  # Save 500ms after last move
+        # Save position whenever widget is moved (by any means) - only if not locked
+        if not self.position_locked:
+            # Add a small delay to avoid excessive saves during dragging
+            if hasattr(self, '_move_timer'):
+                self._move_timer.stop()
+            
+            from PyQt6.QtCore import QTimer
+            self._move_timer = QTimer()
+            self._move_timer.setSingleShot(True)
+            self._move_timer.timeout.connect(lambda: position_manager.save_position(self.pos()))
+            self._move_timer.start(500)  # Save 500ms after last move
     
     def keyPressEvent(self, a0):
         """Handle keyboard shortcuts"""
         # Toggle always on top with Ctrl+T
         if a0 and a0.key() == Qt.Key.Key_T and a0.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.toggle_always_on_top()
+        # Toggle position lock with Ctrl+L
+        elif a0 and a0.key() == Qt.Key.Key_L and a0.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            self.toggle_position_lock()
         super().keyPressEvent(a0)
     
     def toggle_always_on_top(self):
@@ -494,6 +500,21 @@ class TickTickWidget(QWidget):
             new_flags = current_flags | Qt.WindowType.WindowStaysOnTopHint
             self.setWindowFlags(new_flags)
             self.show()  # Need to show again after changing flags
+    
+    def toggle_position_lock(self):
+        """Toggle whether the widget position is locked (prevents mouse dragging)"""
+        self.position_locked = not self.position_locked
+        position_manager.save_lock_state(self.position_locked)
+        
+        # Update status briefly to show lock state
+        if self.position_locked:
+            self.status_label.setText("🔒 Position locked (Ctrl+L to unlock)")
+        else:
+            self.status_label.setText("🔓 Position unlocked (Ctrl+L to lock)")
+        
+        # Reset status after 2 seconds
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(2000, lambda: self.status_label.setText(f"{len(self.tasks)} active tasks"))
     
     def showEvent(self, a0):
         """Handle post-show setup for Wayland/GNOME compatibility"""
