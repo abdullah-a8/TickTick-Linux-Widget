@@ -4,7 +4,7 @@ A modern desktop widget for Linux that displays your active TickTick tasks direc
 
 ## Technical Overview
 
-The TickTick Widget is a desktop application that provides real-time access to your TickTick tasks through a floating, always-available interface. The application employs a sophisticated architecture that balances performance, usability, and cross-platform compatibility.
+The TickTick Widget is a desktop application that provides real-time access to your TickTick tasks through a floating, always-available interface. The application employs a sophisticated architecture that balances performance, usability, and cross-platform compatibility. Recent enhancements include interactive task completion, position locking, enhanced timezone handling, and optimized startup performance.
 
 ### Core Architecture
 
@@ -40,9 +40,10 @@ The application implements intelligent task processing with timezone awareness:
 1. **Data Retrieval**: Direct API calls to TickTick's batch endpoint (`/batch/check/0`)
 2. **Task Filtering**: Extracts only TEXT-type tasks with active status (status=0)
 3. **Data Sanitization**: Cleans and validates task data with safe defaults
-4. **Timezone Conversion**: Converts UTC timestamps to user's local timezone
-5. **Grouping Logic**: Categorizes tasks into time-based groups (overdue, today, tomorrow, later)
+4. **Enhanced Timezone Conversion**: Smart timezone detection from task data with system fallback
+5. **Intelligent Grouping**: User timezone-aware categorization (overdue, today, tomorrow, later)
 6. **Sorting Algorithm**: Priority-first sorting within groups, followed by due time or creation time
+7. **Real-time Updates**: Automatic cache synchronization after task modifications
 
 ### Window Management and Display
 
@@ -84,11 +85,31 @@ The widget implements multiple performance optimization strategies:
 - **Background Threading**: Task loading happens asynchronously via `QThread`
 - **Deferred Operations**: UI setup completes before heavy operations begin
 - **Process Identification**: Custom process title for better system integration
+- **Autostart Delay**: Configurable 3-second delay for smoother system startup
+- **Optimization Script**: Dedicated `optimize_startup.py` for performance tuning
 
 **Runtime Performance**:
 - **Efficient Refreshing**: 5-minute auto-refresh cycle with manual refresh option
 - **Memory Management**: Proper Qt object lifecycle management
 - **Event Optimization**: Debounced position saving to minimize file I/O
+
+### Task Management and Completion
+
+The widget implements comprehensive task interaction capabilities:
+
+**Task Completion System**:
+- **Interactive Checkboxes**: Priority-colored checkboxes for each task
+- **Real-time Completion**: Click to complete tasks directly from the widget
+- **Optimistic Updates**: Immediate UI feedback with rollback on failure
+- **Background Processing**: Non-blocking task completion via threaded workers
+- **Error Handling**: Visual feedback for completion failures with task restoration
+- **API Integration**: Direct integration with TickTick's completion endpoints
+
+**Enhanced User Experience**:
+- **Visual Feedback**: Hover effects on checkboxes with semi-transparent highlighting
+- **Priority Integration**: Checkbox colors match task priority (Red/Orange/Green/Gray)
+- **Status Updates**: Real-time status messages during task operations
+- **Batch Operations**: Support for multiple task completions
 
 ### Configuration Management
 
@@ -96,8 +117,10 @@ The application uses a sophisticated configuration system:
 
 **Position Management**:
 - Automatic position saving with 500ms debounce
+- Position lock functionality with Ctrl+L toggle
 - JSON persistence in `data/config/position_config.json`
 - Default positioning at (100, 100) instead of screen corners
+- Lock state persistence across application restarts
 
 **Theme Management**:
 - User preference persistence in `data/config/theme_config.json`
@@ -116,9 +139,10 @@ The widget employs intelligent task organization:
 
 **Visual Hierarchy**:
 - **Modern Card Design**: Individual task cards with proper spacing
-- **Priority Indicators**: Color-coded badges (High/Medium/Low/None)
+- **Priority Indicators**: Color-coded badges (High/Medium/Low/None) and interactive checkboxes
 - **Metadata Display**: Due dates, content previews, and timestamps
 - **Progressive Disclosure**: Content truncation for long descriptions
+- **Interactive Elements**: Priority-colored checkboxes for task completion with hover feedback
 
 ### Autostart Integration
 
@@ -209,18 +233,22 @@ python scripts/setup_autostart.py --remove
 ## Usage and Controls
 
 ### Mouse Controls
-- **Drag to Move**: Click and drag anywhere on the widget to reposition
+- **Drag to Move**: Click and drag anywhere on the widget to reposition (unless position is locked)
+- **Task Completion**: Click the priority-colored checkbox to mark tasks as completed
 - **Theme Selection**: Use the dropdown in the header to change themes
 - **Manual Refresh**: Click the refresh button (⟲) to update tasks immediately
 
 ### Keyboard Shortcuts
 - **Ctrl+T**: Toggle always-on-top mode
+- **Ctrl+L**: Toggle position lock (prevents widget movement)
 - **Standard Navigation**: Tab, arrow keys for interface navigation
 
 ### Automatic Features
 - **Auto-Refresh**: Tasks update every 5 minutes automatically
 - **Position Memory**: Widget position is saved and restored on restart
+- **Position Lock**: Position lock state persists across sessions (Ctrl+L to toggle)
 - **Theme Persistence**: Selected theme is remembered across sessions
+- **Task Completion**: Real-time task completion with optimistic UI updates and rollback on failure
 
 ## Platform Compatibility
 
@@ -279,6 +307,11 @@ QT_QPA_PLATFORM=xcb python -m ticktick_widget
 - Increase autostart delay for slower systems
 - Check system resources and Qt installation
 
+**Widget positioning issues**:
+- Check if position is locked: press Ctrl+L to toggle
+- Reset position: manually edit `data/config/position_config.json`
+- Unlock position: set `"locked": false` in position config file
+
 ### Debug Information
 
 **Environment Variables**:
@@ -289,7 +322,7 @@ QT_QPA_PLATFORM=xcb python -m ticktick_widget
 **Log Locations**:
 - Systemd service: `journalctl --user -u ticktick-widget`
 - Application output: Console when running manually
-- Position config: `data/config/position_config.json`
+- Position config: `data/config/position_config.json` (includes position and lock state)
 - Theme config: `data/config/theme_config.json`
 
 ## Development
@@ -308,9 +341,10 @@ src/ticktick_widget/
 │   ├── themes.py           # Theme definitions
 │   └── settings.py         # Configuration handling
 ├── gui/
-│   ├── main_widget.py      # Main application window
-│   ├── task_group_widget.py # Task group containers
-│   └── task_item_widget.py  # Individual task cards
+│   ├── main_widget.py        # Main application window
+│   ├── task_group_widget.py  # Task group containers
+│   ├── task_item_widget.py   # Individual task cards
+│   └── priority_checkbox.py  # Interactive priority checkboxes
 └── utils/
     └── task_grouping.py     # Task organization logic
 
