@@ -15,8 +15,20 @@ _task_widgets = None
 def _get_backend_api():
     global _backend_api
     if _backend_api is None:
-        from ..backend.api import get_active_standard_tasks, save_tasks_to_json
-        _backend_api = {'get_active_standard_tasks': get_active_standard_tasks, 'save_tasks_to_json': save_tasks_to_json}
+        from ..backend.api import (
+            get_active_standard_tasks, 
+            save_tasks_to_json,
+            complete_task,
+            update_task_status,
+            refresh_local_task_cache
+        )
+        _backend_api = {
+            'get_active_standard_tasks': get_active_standard_tasks, 
+            'save_tasks_to_json': save_tasks_to_json,
+            'complete_task': complete_task,
+            'update_task_status': update_task_status,
+            'refresh_local_task_cache': refresh_local_task_cache
+        }
     return _backend_api
 
 def _get_task_grouping():
