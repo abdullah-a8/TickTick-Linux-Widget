@@ -75,8 +75,7 @@ class PriorityCheckbox(QCheckBox):
         }}
         
         QCheckBox::indicator:hover {{
-            border: 3px solid #d1d5db;
-            background-color: #f3f4f615;
+            background-color: rgba(243, 244, 246, 0.2);
         }}
         
         QCheckBox::indicator:pressed {{
@@ -90,8 +89,7 @@ class PriorityCheckbox(QCheckBox):
         }}
         
         QCheckBox::indicator:checked:hover {{
-            border: 3px solid #d1d5db;
-            background-color: {priority_colors['checked_background']};
+            background-color: rgba(243, 244, 246, 0.2);
         }}
         
         QCheckBox::indicator:focus {{
