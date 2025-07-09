@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QFrame, QSizePolicy)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from .task_item_widget import TaskItemWidget
@@ -9,11 +9,15 @@ from .task_item_widget import TaskItemWidget
 class TaskGroupWidget(QWidget):
     """Widget for displaying a group of tasks with a header"""
     
+    # Signal emitted when a task should be completed
+    task_completed = pyqtSignal(str)  # Emits task_id
+    
     def __init__(self, group_key, group_info, tasks, parent=None):
         super().__init__(parent)
         self.group_key = group_key
         self.group_info = group_info  
         self.tasks = tasks
+        self.task_widgets = {}  # Store task widgets for state management
         self.setup_ui()
     
     def setup_ui(self):
@@ -102,9 +106,18 @@ class TaskGroupWidget(QWidget):
         container_layout.setSpacing(8)  # 8px grid: 8px between task items
         container_layout.setContentsMargins(16, 0, 16, 0)  # 8px grid: 16px horizontal
         
-        # Create task widgets
+        # Create task widgets and connect signals
         for task in self.tasks:
             task_widget = TaskItemWidget(task)
+            
+            # Connect task completion signal
+            task_widget.task_completed.connect(self.task_completed.emit)
+            
+            # Store widget for state management
+            task_id = task.get('id', '')
+            if task_id:
+                self.task_widgets[task_id] = task_widget
+            
             container_layout.addWidget(task_widget)
         
         container.setLayout(container_layout)
@@ -130,6 +143,49 @@ class TaskGroupWidget(QWidget):
     def get_task_count(self):
         """Get the number of tasks in this group"""
         return len(self.tasks)
+    
+    def set_task_completing_state(self, task_id, is_completing=True):
+        """Set completing state for a specific task"""
+        if task_id in self.task_widgets:
+            self.task_widgets[task_id].set_completing_state(is_completing)
+    
+    def set_task_completed_state(self, task_id):
+        """Set completed state for a specific task"""
+        if task_id in self.task_widgets:
+            self.task_widgets[task_id].set_completed_state()
+    
+    def set_task_error_state(self, task_id, error_message=""):
+        """Set error state for a specific task"""
+        if task_id in self.task_widgets:
+            self.task_widgets[task_id].set_error_state(error_message)
+    
+    def remove_completed_task(self, task_id):
+        """Remove a completed task from the group"""
+        if task_id in self.task_widgets:
+            # Remove from widget tracking
+            task_widget = self.task_widgets.pop(task_id)
+            
+            # Remove from tasks list
+            self.tasks = [task for task in self.tasks if task.get('id') != task_id]
+            
+            # Remove widget from UI
+            task_widget.deleteLater()
+            
+            # Update group header count
+            self.update_group_header()
+    
+    def update_group_header(self):
+        """Update the group header information after task changes"""
+        # Update group info with new task count
+        from ..utils.task_grouping import get_group_display_info
+        self.group_info = get_group_display_info(self.group_key, len(self.tasks))
+        
+        # If no tasks left, hide the group
+        if len(self.tasks) == 0:
+            self.hide()
+        
+        # Rebuild the UI to reflect changes
+        self.setup_ui()
     
     def is_empty(self):
         """Check if the group has no tasks"""

@@ -43,7 +43,12 @@ def _get_task_widgets():
     if _task_widgets is None:
         from .task_group_widget import TaskGroupWidget
         from .task_item_widget import TaskItemWidget
-        _task_widgets = {'TaskGroupWidget': TaskGroupWidget, 'TaskItemWidget': TaskItemWidget}
+        from .priority_checkbox import PriorityCheckboxContainer
+        _task_widgets = {
+            'TaskGroupWidget': TaskGroupWidget, 
+            'TaskItemWidget': TaskItemWidget,
+            'PriorityCheckboxContainer': PriorityCheckboxContainer
+        }
     return _task_widgets
 
 # Import managers immediately as they're lightweight
@@ -70,8 +75,37 @@ class StartupOptimizer(QThread):
             else:
                 self.tasks_loaded.emit([])
         except Exception as e:
-            print(f"Error loading tasks in background: {e}")
             self.tasks_loaded.emit([])
+
+
+class TaskCompletionWorker(QThread):
+    """Background thread for task completion to avoid blocking UI"""
+    
+    # Signals for different outcomes
+    task_completed = pyqtSignal(str, dict)  # task_id, completed_task_data
+    task_completion_failed = pyqtSignal(str, str)  # task_id, error_message
+    
+    def __init__(self, task_id):
+        super().__init__()
+        self.task_id = task_id
+        
+    def run(self):
+        """Complete task in background"""
+        try:
+            # Get backend API functions
+            backend_api = _get_backend_api()
+            
+            # Attempt to complete the task
+            completed_task = backend_api['complete_task'](self.task_id)
+            
+            if completed_task:
+                self.task_completed.emit(self.task_id, completed_task)
+            else:
+                self.task_completion_failed.emit(self.task_id, "Task completion returned empty response")
+                
+        except Exception as e:
+            error_msg = str(e)
+            self.task_completion_failed.emit(self.task_id, error_msg)
 
 
 class TickTickWidget(QWidget):
@@ -82,6 +116,9 @@ class TickTickWidget(QWidget):
         self.tasks = []
         self.startup_complete = False
         self.deferred_operations_pending = True
+        self.completion_worker = None  # Initialize task completion worker
+        self.pending_completion_task = None  # Store task data for potential rollback
+        self.startup_refresh_timer = None  # Initialize startup refresh timer
         
         # Setup UI immediately (lightweight)
         self.setup_ui()
@@ -262,6 +299,45 @@ class TickTickWidget(QWidget):
             self.status_label.setText(f"Loaded {len(self.tasks)} tasks")
         else:
             self.status_label.setText("No tasks file found. Click Refresh to fetch tasks.")
+        
+        # Schedule automatic refresh 3 seconds after startup to get latest tasks
+        self.startup_refresh_timer = QTimer()
+        self.startup_refresh_timer.setSingleShot(True)
+        self.startup_refresh_timer.timeout.connect(self.startup_refresh_tasks)
+        self.startup_refresh_timer.start(3000)  # 3 seconds delay
+
+    def startup_refresh_tasks(self):
+        """Automatically refresh tasks after startup to ensure latest data"""
+        # Prevent multiple startup refreshes
+        if not hasattr(self, 'startup_refresh_timer') or not self.startup_refresh_timer:
+            return
+            
+        # Only refresh if we have cached tasks (avoid unnecessary API calls on empty startup)
+        if self.tasks:
+            # Show subtle status update (different from manual refresh)
+            self.status_label.setText("Syncing with server...")
+            QApplication.processEvents()
+            
+            try:
+                # Fetch latest tasks from API
+                tasks = _get_backend_api()['get_active_standard_tasks']()
+                
+                # Save to file and update UI
+                if _get_backend_api()['save_tasks_to_json'](tasks):
+                    self.tasks = tasks
+                    self.update_task_display()
+                    self.status_label.setText(f"Synced - {len(tasks)} active tasks")
+                else:
+                    # If save fails, revert to showing cached count
+                    self.status_label.setText(f"{len(self.tasks)} active tasks")
+            except Exception:
+                # If sync fails, silently revert to cached count (don't show error)
+                self.status_label.setText(f"{len(self.tasks)} active tasks")
+        
+        # Clean up timer
+        if hasattr(self, 'startup_refresh_timer') and self.startup_refresh_timer:
+            self.startup_refresh_timer.deleteLater()
+            self.startup_refresh_timer = None
 
     def load_tasks(self):
         """Load tasks from JSON file - now deprecated, using background loading"""
@@ -271,6 +347,10 @@ class TickTickWidget(QWidget):
     
     def refresh_tasks(self):
         """Refresh tasks from TickTick API"""
+        # Clear any pending completion state
+        if hasattr(self, 'pending_completion_task'):
+            delattr(self, 'pending_completion_task')
+        
         self.status_label.setText("Refreshing tasks...")
         QApplication.processEvents()  # Update UI immediately
         
@@ -327,6 +407,9 @@ class TickTickWidget(QWidget):
                 
                 # Create group widget
                 group_widget = _get_task_widgets()['TaskGroupWidget'](group_key, group_info, sorted_tasks)
+                
+                # Connect task completion signal
+                group_widget.task_completed.connect(self.handle_task_completion)
                 
                 # Insert before the stretch
                 self.tasks_layout.insertWidget(self.tasks_layout.count() - 1, group_widget)
@@ -440,6 +523,116 @@ class TickTickWidget(QWidget):
         except Exception:
             # Silently ignore errors in hint setting
             pass
+    
+    def handle_task_completion(self, task_id):
+        """Handle task completion request from UI - aggressive optimistic updates"""
+        if not task_id:
+            return
+        
+        # Find the task data for potential rollback
+        task_data = next((task for task in self.tasks if task.get('id') == task_id), None)
+        if not task_data:
+            return
+        
+        # Store original task data for potential rollback
+        self.pending_completion_task = task_data.copy()
+        
+        # Aggressive optimistic UI update - remove task from UI immediately
+        self.tasks = [task for task in self.tasks if task.get('id') != task_id]
+        self.update_task_display()
+        
+        # Update status optimistically
+        task_title = task_data.get('title', 'Task')
+        self.status_label.setText(f"✅ Completed: {task_title} - {len(self.tasks)} active tasks")
+        QApplication.processEvents()  # Update UI immediately
+        
+        # Create and start background worker thread for actual completion
+        self.completion_worker = TaskCompletionWorker(task_id)
+        
+        # Connect worker signals to handlers
+        self.completion_worker.task_completed.connect(self.on_task_completion_success)
+        self.completion_worker.task_completion_failed.connect(self.on_task_completion_failed)
+        
+        # Start the background task
+        self.completion_worker.start()
+    
+    def on_task_completion_success(self, task_id, completed_task):
+        """Handle successful task completion from background thread"""
+        # Task already removed from UI due to aggressive optimistic update
+        # Just sync the backend state and update status properly
+        
+        # Clean up stored task data
+        if hasattr(self, 'pending_completion_task'):
+            delattr(self, 'pending_completion_task')
+        
+        # Update backend cache and status after showing completion message briefly
+        QTimer.singleShot(1500, self.update_status_after_completion)
+        
+        # Clean up worker
+        if self.completion_worker:
+            self.completion_worker.deleteLater()
+            self.completion_worker = None
+    
+    def update_status_after_completion(self):
+        """Update backend cache and status bar after successful completion"""
+        # Update backend cache
+        if _get_backend_api()['refresh_local_task_cache']():
+            # Update status to show normal state with task count
+            self.status_label.setText(f"{len(self.tasks)} active tasks")
+        else:
+            # If cache refresh fails, still show task count
+            self.status_label.setText(f"{len(self.tasks)} active tasks")
+    
+    def on_task_completion_failed(self, task_id, error_message):
+        """Handle failed task completion from background thread"""
+        # Revert aggressive optimistic update - restore task to UI
+        if hasattr(self, 'pending_completion_task'):
+            # Add the task back to the list
+            self.tasks.append(self.pending_completion_task)
+            
+            # Re-sort tasks to maintain proper order
+            # Simple sort by title for now, could be enhanced with proper grouping logic
+            self.tasks.sort(key=lambda x: x.get('title', ''))
+            
+            # Refresh UI to show the task again
+            self.update_task_display()
+            
+            # Find the restored task widget and set error state
+            QTimer.singleShot(50, lambda: self.set_task_error_state(task_id, error_message))
+            
+            # Clean up stored task data
+            delattr(self, 'pending_completion_task')
+        
+        # Update status
+        self.status_label.setText(f"❌ Error completing task: {error_message}")
+        
+        # Clean up worker
+        if self.completion_worker:
+            self.completion_worker.deleteLater()
+            self.completion_worker = None
+    
+    def set_task_error_state(self, task_id, error_message):
+        """Helper to set error state on a task widget after UI refresh"""
+        task_widget = self.find_task_widget(task_id)
+        if task_widget:
+            checkbox = task_widget.get_checkbox() if hasattr(task_widget, 'get_checkbox') else None
+            if checkbox:
+                checkbox.set_error_state(error_message)
+    
+    def find_task_widget(self, task_id):
+        """Find the task widget for a given task ID"""
+        # Iterate through all group widgets to find the task
+        for i in range(self.tasks_layout.count() - 1):  # Exclude the stretch
+            item = self.tasks_layout.itemAt(i)
+            if item and item.widget():
+                group_widget = item.widget()
+                # Check if this is a TaskGroupWidget with task_widgets attribute
+                task_widgets = getattr(group_widget, 'task_widgets', None)
+                if (isinstance(task_widgets, dict) and task_id in task_widgets):
+                    return task_widgets[task_id]
+        return None
+    
+
 
 
 def main():

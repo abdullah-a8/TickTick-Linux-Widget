@@ -94,7 +94,6 @@ def complete_task(task_id, project_id=None):
         # Verify it's not already completed (status field varies between v1/v2)
         task_status = getattr(task_obj, 'status', None)
         if task_status is True:  # v1 API uses boolean for status
-            print(f"Task '{getattr(task_obj, 'title', 'Unknown')}' is already completed")
             return task_obj.model_dump() if hasattr(task_obj, 'model_dump') else task_obj
         
         # Mark task as complete using pyticktick's v1 API
@@ -113,20 +112,15 @@ def complete_task(task_id, project_id=None):
                 task_dict = updated_task
             
             # Get title safely
-            title = task_dict.get('title', 'Unknown') if isinstance(task_dict, dict) else 'Unknown'
-            print(f"✅ Successfully completed task: '{title}'")
             return task_dict
         else:
             raise Exception("Task completion succeeded but couldn't fetch updated task")
             
     except ValueError as e:
-        print(f"Validation error completing task: {e}")
         raise
     except ConnectionError as e:
-        print(f"Network error completing task: {e}")
         raise
     except Exception as e:
-        print(f"Unexpected error completing task '{task_id}': {e}")
         raise
 
 def update_task_status(task_id, status, project_id=None):
@@ -171,8 +165,6 @@ def update_task_status(task_id, status, project_id=None):
         # Check if status change is needed (v1 API uses boolean)
         current_status = getattr(task_obj, 'status', False)
         if current_status == v1_status:
-            status_text = "completed" if v1_status else "active"
-            print(f"Task '{getattr(task_obj, 'title', 'Unknown')}' already has status {status_text}")
             return task_obj.model_dump() if hasattr(task_obj, 'model_dump') else task_obj
         
         # For completion, use the complete_task function
@@ -187,13 +179,10 @@ def update_task_status(task_id, status, project_id=None):
             )
             
     except ValueError as e:
-        print(f"Validation error updating task status: {e}")
         raise
     except ConnectionError as e:
-        print(f"Network error updating task status: {e}")
         raise
     except Exception as e:
-        print(f"Unexpected error updating task status '{task_id}': {e}")
         raise
 
 def batch_complete_tasks(task_ids):
@@ -216,10 +205,7 @@ def batch_complete_tasks(task_ids):
     }
     
     if not task_ids or not isinstance(task_ids, list):
-        print("Warning: No valid task IDs provided for batch completion")
         return results
-    
-    print(f"Starting batch completion of {len(task_ids)} tasks...")
     
     for task_id in task_ids:
         try:
@@ -229,9 +215,6 @@ def batch_complete_tasks(task_ids):
         except Exception as e:
             error_msg = str(e)
             results['failed'].append((task_id, error_msg))
-            print(f"Failed to complete task '{task_id}': {error_msg}")
-    
-    print(f"Batch completion finished: {len(results['success'])} successful, {len(results['failed'])} failed")
     return results
 
 def refresh_local_task_cache():
@@ -243,21 +226,16 @@ def refresh_local_task_cache():
         bool: True if cache refresh was successful, False otherwise
     """
     try:
-        print("Refreshing local task cache...")
-        
         # Fetch fresh tasks from API
         fresh_tasks = get_active_standard_tasks()
         
         # Save to local cache
         if save_tasks_to_json(fresh_tasks):
-            print(f"✅ Successfully refreshed cache with {len(fresh_tasks)} active tasks")
             return True
         else:
-            print("❌ Failed to save refreshed tasks to cache")
             return False
             
     except Exception as e:
-        print(f"Error refreshing task cache: {e}")
         return False
 
 def save_tasks_to_json(tasks):
@@ -276,7 +254,6 @@ def save_tasks_to_json(tasks):
             json.dump(tasks, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
-        print(f"Error saving file: {e}")
         return False
 
 def _get_project_id_for_task(task_id):
@@ -306,7 +283,6 @@ def _get_project_id_for_task(task_id):
                 
         return None
     except Exception as e:
-        print(f"Error getting project ID for task {task_id}: {e}")
         return None
 
 if __name__ == "__main__":

@@ -1,12 +1,17 @@
 from datetime import datetime, timezone
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 import zoneinfo
+
+from .priority_checkbox import PriorityCheckboxContainer
 
 
 class TaskItemWidget(QWidget):
     """Modern card-style widget for displaying a single task"""
+    
+    # Signal emitted when task should be completed
+    task_completed = pyqtSignal(str)  # Emits task_id
     
     def __init__(self, task_data):
         super().__init__()
@@ -36,11 +41,15 @@ class TaskItemWidget(QWidget):
         self.setLayout(layout)
     
     def create_header_section(self):
-        """Create the main header with title and priority badge"""
+        """Create the main header with priority checkbox, title, and priority badge"""
         header_widget = QWidget()
         header_layout = QHBoxLayout()
         header_layout.setSpacing(12)  # 8px grid: 12px spacing
         header_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Priority checkbox on the left
+        self.priority_checkbox = PriorityCheckboxContainer(self.task_data, self)
+        self.priority_checkbox.task_completed.connect(self.task_completed.emit)
         
         # Task title with improved typography
         title = self.task_data.get('title', 'Untitled Task')
@@ -53,9 +62,10 @@ class TaskItemWidget(QWidget):
         # Priority badge with modern styling
         priority_badge = self.create_priority_badge()
         
-        # Layout
-        header_layout.addWidget(title_label, 1)  # Title takes most space
-        header_layout.addWidget(priority_badge, 0)  # Badge takes minimal space
+        # Layout: Checkbox - Title - Priority Badge
+        header_layout.addWidget(self.priority_checkbox, 0, Qt.AlignmentFlag.AlignTop)  # Checkbox fixed width, top aligned
+        header_layout.addWidget(title_label, 1, Qt.AlignmentFlag.AlignVCenter)  # Title takes remaining space, center aligned
+        header_layout.addWidget(priority_badge, 0, Qt.AlignmentFlag.AlignTop)  # Badge takes minimal space, top aligned
         
         header_widget.setLayout(header_layout)
         return header_widget
@@ -241,4 +251,31 @@ class TaskItemWidget(QWidget):
             pass
         
         # Ultimate fallback to UTC
-        return timezone.utc 
+        return timezone.utc
+    
+    def get_task_id(self):
+        """Get the task ID for this widget"""
+        return self.task_data.get('id', '')
+    
+    def set_completing_state(self, is_completing=True):
+        """Set visual state for when task is being completed"""
+        if hasattr(self, 'priority_checkbox'):
+            self.priority_checkbox.set_completing_state(is_completing)
+    
+    def set_completed_state(self):
+        """Set visual state for completed task"""
+        if hasattr(self, 'priority_checkbox'):
+            self.priority_checkbox.set_completed_state()
+        
+        # Also update the task card styling to show completion
+        self.setStyleSheet(self.styleSheet() + """
+        QWidget[objectName="taskCard"] {
+            opacity: 0.7;
+            background-color: rgba(16, 185, 129, 0.1);
+        }
+        """)
+    
+    def set_error_state(self, error_message=""):
+        """Set visual state for when task completion fails"""
+        if hasattr(self, 'priority_checkbox'):
+            self.priority_checkbox.set_error_state(error_message) 
